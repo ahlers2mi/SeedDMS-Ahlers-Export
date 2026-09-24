@@ -1,0 +1,49 @@
+name: Build extension ZIP
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-zip:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read extension version from conf.php
+        id: meta
+        run: |
+          VERSION=$(grep -oP "'version'\s*=>\s*'\K[^']+" conf.php || echo "0.0.0")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Extension version: $VERSION"
+
+      - name: Build ZIP (Dateien und Unterordner im Root)
+        run: |
+          set -e
+          ZIP="ahlers_export-${{ steps.meta.outputs.version }}.zip"
+          zip -r "$ZIP" \
+            conf.php class.ahlers_export.php lang.php icon.svg changelog.md README.md \
+            inc js
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+          unzip -l "$ZIP"
+
+      - name: Upload ZIP as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahlers_export-extension
+          path: ${{ env.ZIP }}
+
+      - name: Release erstellen und ZIP anhängen
+        # Bei Tag-Push: Release zum Tag. Bei manuellem Start (workflow_dispatch):
+        # Release v<version> wird angelegt und der Tag serverseitig erzeugt
+        # (nötig, da Tag-Pushes in manchen Umgebungen blockiert sind).
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: Ahlers Export ${{ steps.meta.outputs.version }}
+          files: ${{ env.ZIP }}
